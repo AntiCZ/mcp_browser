@@ -36,3 +36,6 @@ yarn-error.log*
 
 # Implementation plans
 HINT-SYSTEM-IMPLEMENTATION.md
+
+# Claude memory directory
+.claude/
