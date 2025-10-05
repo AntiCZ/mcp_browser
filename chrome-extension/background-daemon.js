@@ -142,10 +142,50 @@
         throw new Error('Unsafe mode not enabled');
       }
       const tabId = typeof _envelopeTabId === 'number' ? _envelopeTabId : await getActiveTabId();
-      const world = unsafe ? 'MAIN' : 'ISOLATED';
+
+      // In SAFE mode, execute via the page API helper to support async/await and return values.
+      // In UNSAFE mode, run in the MAIN world and expect caller-provided IIFE.
+      if (!unsafe) {
+        // Ensure the page API is available in the isolated world
+        try {
+          const hasApi = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'ISOLATED',
+            func: () => Boolean(window.__mcpApi)
+          });
+          if (!hasApi[0]?.result) {
+            await chrome.scripting.executeScript({ target: { tabId }, world: 'ISOLATED', files: ['page-api.js'] });
+          }
+        } catch (e) {
+          warn('Failed ensuring page API:', e);
+        }
+
+        // Execute code via __mcpApi.exec so top-level await and `api.*` work
+        const execResults = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'ISOLATED',
+          func: async (userCode, maxMs) => {
+            const run = async () => {
+              if (!window.__mcpApi || typeof window.__mcpApi.exec !== 'function') {
+                throw new Error('__mcpApi not available in page context');
+              }
+              return await window.__mcpApi.exec(userCode);
+            };
+            // Simple timeout wrapper to avoid hanging
+            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+            return await Promise.race([run(), timeoutPromise]);
+          },
+          args: [code, timeout]
+        });
+
+        const value = execResults && execResults[0] ? execResults[0].result : undefined;
+        return { result: value };
+      }
+
+      // UNSAFE mode: execute in MAIN world. Caller must wrap code in an IIFE.
       const execResults = await chrome.scripting.executeScript({
         target: { tabId },
-        world,
+        world: 'MAIN',
         func: new Function('return ' + code)
       });
       const value = execResults && execResults[0] ? execResults[0].result : undefined;
