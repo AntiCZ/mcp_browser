@@ -399,10 +399,16 @@
     });
 
     // Simple screenshot of visible tab
+    // Primary handler
     messageHandlers.set('screenshot.capture', async ({ _envelopeTabId }) => {
       const tabId = typeof _envelopeTabId === 'number' ? _envelopeTabId : await getActiveTabId();
       const dataUrl = await chrome.tabs.captureVisibleTab(undefined, { format: 'png' });
       return { data: dataUrl, tabId };
+    });
+
+    // Alias used by server tools: map browser_screenshot -> screenshot.capture
+    messageHandlers.set('browser_screenshot', async (args) => {
+      return await messageHandlers.get('screenshot.capture')(args);
     });
   }
 
