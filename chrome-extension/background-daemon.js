@@ -184,23 +184,64 @@
 
       // UNSAFE mode: execute in MAIN world. Caller should send an expression/IIFE.
       // We wrap with an AsyncFunction that always returns the expression value.
-      const execResults = await chrome.scripting.executeScript({
-        target: { tabId },
-        world: 'MAIN',
-        func: async (userCode, maxMs) => {
-          const AsyncFunction = (async function(){}).constructor;
-          const run = async () => {
-            // Force a return of the provided expression/IIFE
-            const src = 'return ( ' + String(userCode) + ' )';
-            const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', src);
-            return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
-          };
-          const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
-          return await Promise.race([run(), timeoutPromise]);
-        },
-        args: [code, timeout]
-      });
-      const value = execResults && execResults[0] ? execResults[0].result : undefined;
+      let value;
+      try {
+        const execResults = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN',
+          func: async (userCode, maxMs) => {
+            const AsyncFunction = (async function(){}).constructor;
+            const run = async () => {
+              // Force a return of the provided expression/IIFE
+              const src = 'return ( ' + String(userCode) + ' )';
+              const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', src);
+              return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
+            };
+            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+            return await Promise.race([run(), timeoutPromise]);
+          },
+          args: [code, timeout]
+        });
+        value = execResults && execResults[0] ? execResults[0].result : undefined;
+      } catch (e) {
+        warn('Unsafe MAIN execution threw:', e);
+      }
+
+      // Fallback: If MAIN world returned undefined or was blocked by CSP, try ISOLATED via page API
+      if (typeof value === 'undefined') {
+        try {
+          const hasApi = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'ISOLATED',
+            func: () => Boolean(window.__mcpApi)
+          });
+          if (!hasApi[0]?.result) {
+            await chrome.scripting.executeScript({ target: { tabId }, world: 'ISOLATED', files: ['page-api.js'] });
+          }
+          const fallback = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'ISOLATED',
+            func: async (userCode, maxMs) => {
+              const run = async () => {
+                if (!window.__mcpApi || typeof window.__mcpApi.exec !== 'function') {
+                  throw new Error('__mcpApi not available in isolated context');
+                }
+                // Ensure the expression/IIFE return value is propagated
+                const wrapped = 'return ( ' + String(userCode) + ' )';
+                return await window.__mcpApi.exec(wrapped);
+              };
+              const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+              return await Promise.race([run(), timeoutPromise]);
+            },
+            args: [code, timeout]
+          });
+          value = fallback && fallback[0] ? fallback[0].result : undefined;
+          log('Unsafe execution fallback (ISOLATED) used');
+        } catch (e) {
+          warn('Unsafe execution fallback failed:', e);
+        }
+      }
+
       return { result: value };
     });
 
