@@ -186,7 +186,16 @@
       const execResults = await chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
-        func: new Function('return ' + code)
+        func: async (userCode, maxMs) => {
+          const AsyncFunction = (async function(){}).constructor;
+          const run = async () => {
+            const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', userCode);
+            return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
+          };
+          const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+          return await Promise.race([run(), timeoutPromise]);
+        },
+        args: [code, timeout]
       });
       const value = execResults && execResults[0] ? execResults[0].result : undefined;
       return { result: value };
