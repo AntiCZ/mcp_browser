@@ -13,3 +13,6 @@ BROWSER_MCP_COMMAND_TIMEOUT=45000
 # Enable HTTP server debug endpoint (/debug/session/<id>)
 BROWSER_MCP_ENABLE_DEBUG=0
 
+# Optional: Supabase REST for storage ingestion (local defaults)
+# SUPABASE_REST_URL=http://127.0.0.1:54321
+# SUPABASE_SERVICE_KEY=sb_secret_your_local_service_key
