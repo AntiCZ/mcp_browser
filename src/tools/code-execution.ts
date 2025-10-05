@@ -63,15 +63,15 @@ export const executeJS: Tool = {
       // Send to browser for execution
       // Add buffer to account for communication overhead
       const messageTimeout = validatedParams.timeout + 500;
-      const response = await context.sendSocketMessage("js.execute", {
+      let response = await context.sendSocketMessage("js.execute", {
         code: validatedParams.code,
         timeout: validatedParams.timeout,
         unsafe: useUnsafeMode
       }, { timeoutMs: messageTimeout });
       
       // Be defensive about response shape across transports
-      const raw = response as any;
-      const extracted = (
+      let raw = response as any;
+      let extracted = (
         raw?.result !== undefined ? raw.result :
         raw?.data?.result !== undefined ? raw.data.result :
         raw?.payload?.result !== undefined ? raw.payload.result :
@@ -79,12 +79,34 @@ export const executeJS: Tool = {
         undefined
       );
 
+      // If UNSAFE mode returned undefined, attempt a SAFE fallback via page API
+      if ((extracted === undefined || extracted === null) && useUnsafeMode) {
+        try {
+          const fallback = await context.sendSocketMessage("js.execute", {
+            code: validatedParams.code,
+            timeout: validatedParams.timeout,
+            unsafe: false
+          }, { timeoutMs: messageTimeout });
+          raw = fallback as any;
+          extracted = (
+            raw?.result !== undefined ? raw.result :
+            raw?.data?.result !== undefined ? raw.data.result :
+            raw?.payload?.result !== undefined ? raw.payload.result :
+            raw?.value !== undefined ? raw.value :
+            undefined
+          );
+        } catch (e) {
+          // ignore, will continue with undefined handling below
+        }
+      }
+
       // Format the result
       let resultText: string;
       if (extracted === undefined || extracted === null) {
         // Include minimal debug of shape to aid diagnosis without leaking data volume
         const shapeHint = raw && typeof raw === 'object' ? `keys: ${Object.keys(raw).join(', ')}` : typeof raw;
-        resultText = `Code executed successfully (no return value)\n[debug] response shape: ${shapeHint}`;
+        const modeNote = useUnsafeMode ? " (after unsafe+safe fallback)" : "";
+        resultText = `Code executed successfully (no return value)${modeNote}\n[debug] response shape: ${shapeHint}`;
       } else if (typeof extracted === 'object') {
         resultText = JSON.stringify(extracted, null, 2);
       } else {

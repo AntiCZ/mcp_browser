@@ -182,32 +182,79 @@
         return { result: value };
       }
 
-      // UNSAFE mode: execute in MAIN world. Caller should send an expression/IIFE.
-      // We wrap with an AsyncFunction that always returns the expression value.
+      // UNSAFE mode: Prefer DevTools Runtime.evaluate via chrome.debugger to bypass page CSP.
       let value;
+      let usedDebugger = false;
+      const target = { tabId };
       try {
-        const execResults = await chrome.scripting.executeScript({
-          target: { tabId },
-          world: 'MAIN',
-          func: async (userCode, maxMs) => {
-            const AsyncFunction = (async function(){}).constructor;
-            const run = async () => {
-              // Force a return of the provided expression/IIFE
-              const src = 'return ( ' + String(userCode) + ' )';
-              const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', src);
-              return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
-            };
-            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
-            return await Promise.race([run(), timeoutPromise]);
-          },
-          args: [code, timeout]
+        // Attach and enable Runtime domain
+        await new Promise((resolve, reject) => {
+          chrome.debugger.attach(target, '1.3', () => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(err);
+            resolve();
+          });
         });
-        value = execResults && execResults[0] ? execResults[0].result : undefined;
+        usedDebugger = true;
+        await new Promise((resolve, reject) => {
+          chrome.debugger.sendCommand(target, 'Runtime.enable', {}, () => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(err);
+            resolve();
+          });
+        });
+
+        // Evaluate expression/IIFE and return by value
+        const expression = `( ${String(code)} )`;
+        const evalResult = await new Promise((resolve, reject) => {
+          chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
+            expression,
+            returnByValue: true,
+            awaitPromise: true,
+            silent: true,
+            replMode: true,
+          }, (res) => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(err);
+            resolve(res);
+          });
+        });
+        if (evalResult && evalResult.result) {
+          value = evalResult.result.value;
+        }
       } catch (e) {
-        warn('Unsafe MAIN execution threw:', e);
+        warn('Debugger evaluate failed:', e);
+      } finally {
+        if (usedDebugger) {
+          try { await new Promise((resolve) => chrome.debugger.detach(target, () => resolve())); } catch {}
+        }
       }
 
-      // Fallback: If MAIN world returned undefined or was blocked by CSP, try ISOLATED via page API
+      // Fallback #1: MAIN world execute with AsyncFunction (may hit CSP)
+      if (typeof value === 'undefined') {
+        try {
+          const execResults = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: async (userCode, maxMs) => {
+              const AsyncFunction = (async function(){}).constructor;
+              const run = async () => {
+                const src = 'return ( ' + String(userCode) + ' )';
+                const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', src);
+                return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
+              };
+              const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+              return await Promise.race([run(), timeoutPromise]);
+            },
+            args: [code, timeout]
+          });
+          value = execResults && execResults[0] ? execResults[0].result : undefined;
+        } catch (e) {
+          warn('Unsafe MAIN execution threw:', e);
+        }
+      }
+
+      // Fallback #2: ISOLATED world via page API exec
       if (typeof value === 'undefined') {
         try {
           const hasApi = await chrome.scripting.executeScript({
@@ -226,7 +273,6 @@
                 if (!window.__mcpApi || typeof window.__mcpApi.exec !== 'function') {
                   throw new Error('__mcpApi not available in isolated context');
                 }
-                // Ensure the expression/IIFE return value is propagated
                 const wrapped = 'return ( ' + String(userCode) + ' )';
                 return await window.__mcpApi.exec(wrapped);
               };
@@ -238,7 +284,7 @@
           value = fallback && fallback[0] ? fallback[0].result : undefined;
           log('Unsafe execution fallback (ISOLATED) used');
         } catch (e) {
-          warn('Unsafe execution fallback failed:', e);
+          warn('Unsafe execution isolated fallback failed:', e);
         }
       }
 
