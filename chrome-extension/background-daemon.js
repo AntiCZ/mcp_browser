@@ -182,14 +182,17 @@
         return { result: value };
       }
 
-      // UNSAFE mode: execute in MAIN world. Caller must wrap code in an IIFE.
+      // UNSAFE mode: execute in MAIN world. Caller should send an expression/IIFE.
+      // We wrap with an AsyncFunction that always returns the expression value.
       const execResults = await chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
         func: async (userCode, maxMs) => {
           const AsyncFunction = (async function(){}).constructor;
           const run = async () => {
-            const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', userCode);
+            // Force a return of the provided expression/IIFE
+            const src = 'return ( ' + String(userCode) + ' )';
+            const fn = new AsyncFunction('window','document','console','chrome','api','__mcpApi', src);
             return await fn(window, document, console, chrome, window.__mcpApi, window.__mcpApi);
           };
           const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
