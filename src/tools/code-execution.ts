@@ -69,14 +69,26 @@ export const executeJS: Tool = {
         unsafe: useUnsafeMode
       }, { timeoutMs: messageTimeout });
       
+      // Be defensive about response shape across transports
+      const raw = response as any;
+      const extracted = (
+        raw?.result !== undefined ? raw.result :
+        raw?.data?.result !== undefined ? raw.data.result :
+        raw?.payload?.result !== undefined ? raw.payload.result :
+        raw?.value !== undefined ? raw.value :
+        undefined
+      );
+
       // Format the result
       let resultText: string;
-      if (response.result === undefined || response.result === null) {
-        resultText = "Code executed successfully (no return value)";
-      } else if (typeof response.result === 'object') {
-        resultText = JSON.stringify(response.result, null, 2);
+      if (extracted === undefined || extracted === null) {
+        // Include minimal debug of shape to aid diagnosis without leaking data volume
+        const shapeHint = raw && typeof raw === 'object' ? `keys: ${Object.keys(raw).join(', ')}` : typeof raw;
+        resultText = `Code executed successfully (no return value)\n[debug] response shape: ${shapeHint}`;
+      } else if (typeof extracted === 'object') {
+        resultText = JSON.stringify(extracted, null, 2);
       } else {
-        resultText = String(response.result);
+        resultText = String(extracted);
       }
       
       return {
