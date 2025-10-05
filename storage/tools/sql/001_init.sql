@@ -81,7 +81,7 @@ create table if not exists tool_calls (
   tool_name text not null,
   started_at timestamptz default now(),
   ended_at timestamptz,
-  latency_ms int generated always as (extract(epoch from (coalesce(ended_at, now()) - started_at)) * 1000)::int stored,
+  latency_ms int,
   success boolean,
   error_msg text,
   input_jsonb jsonb,
@@ -164,21 +164,41 @@ alter table hint_stats enable row level security;
 alter table dedup_hashes enable row level security;
 
 -- permissive dev policies (allow anon/authenticated/service_role to read/write)
-create policy if not exists sessions_rw on sessions for all using (true) with check (true);
-create policy if not exists runs_rw on runs for all using (true) with check (true);
-create policy if not exists instances_rw on instances for all using (true) with check (true);
-create policy if not exists tabs_rw on tabs for all using (true) with check (true);
-create policy if not exists page_signatures_rw on page_signatures for all using (true) with check (true);
-create policy if not exists element_signatures_rw on element_signatures for all using (true) with check (true);
-create policy if not exists tool_calls_rw on tool_calls for all using (true) with check (true);
-create policy if not exists artifacts_rw on artifacts for all using (true) with check (true);
-create policy if not exists hints_rw on hints for all using (true) with check (true);
-create policy if not exists hint_stats_rw on hint_stats for all using (true) with check (true);
-create policy if not exists dedup_hashes_rw on dedup_hashes for all using (true) with check (true);
+drop policy if exists sessions_rw on sessions;
+create policy sessions_rw on sessions for all using (true) with check (true);
+
+drop policy if exists runs_rw on runs;
+create policy runs_rw on runs for all using (true) with check (true);
+
+drop policy if exists instances_rw on instances;
+create policy instances_rw on instances for all using (true) with check (true);
+
+drop policy if exists tabs_rw on tabs;
+create policy tabs_rw on tabs for all using (true) with check (true);
+
+drop policy if exists page_signatures_rw on page_signatures;
+create policy page_signatures_rw on page_signatures for all using (true) with check (true);
+
+drop policy if exists element_signatures_rw on element_signatures;
+create policy element_signatures_rw on element_signatures for all using (true) with check (true);
+
+drop policy if exists tool_calls_rw on tool_calls;
+create policy tool_calls_rw on tool_calls for all using (true) with check (true);
+
+drop policy if exists artifacts_rw on artifacts;
+create policy artifacts_rw on artifacts for all using (true) with check (true);
+
+drop policy if exists hints_rw on hints;
+create policy hints_rw on hints for all using (true) with check (true);
+
+drop policy if exists hint_stats_rw on hint_stats;
+create policy hint_stats_rw on hint_stats for all using (true) with check (true);
+
+drop policy if exists dedup_hashes_rw on dedup_hashes;
+create policy dedup_hashes_rw on dedup_hashes for all using (true) with check (true);
 
 grant usage on schema public to anon, authenticated, service_role;
 grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
 
 -- Done
-

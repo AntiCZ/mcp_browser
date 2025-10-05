@@ -32,6 +32,9 @@ export class Context {
   private _daemonUrl: string | undefined;
   public instanceId: string = '';
   public port: number = 0;
+  // Storage/ingestion context
+  public runId?: string;
+  public toolSeq: number = 0;
 
   get ws(): WebSocket {
     if (!this._ws) {

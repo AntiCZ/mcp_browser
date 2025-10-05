@@ -152,6 +152,7 @@ program
       sessionId: SessionId;
       server: Server;
       transport: StreamableHTTPServerTransport;
+      runId?: string;
     }
 
     const sessions = new Map<SessionId, SessionState>();
@@ -195,9 +196,17 @@ program
         onsessionclosed: async () => {
           console.error(`[BrowserMCP HTTP] Session closed: ${sessionId}`);
           await instanceRegistry.release(sessionId);
+          const existing = sessions.get(sessionId);
           sessions.delete(sessionId);
           await server.close();
           console.error(`[BrowserMCP HTTP] Active sessions: ${sessions.size}`);
+          // Close run in storage if enabled
+          try {
+            const { finishRun } = await import('./storage/supabase.js');
+            await finishRun(existing?.runId, 'completed');
+          } catch (e) {
+            // non-fatal
+          }
         },
       });
 
@@ -206,7 +215,23 @@ program
         console.error(`[BrowserMCP HTTP] Transport error for session ${sessionId}:`, err);
       };
 
-      const state: SessionState = { sessionId, server, transport };
+      // Create run in storage (optional)
+      let runId: string | undefined = undefined;
+      try {
+        const { createRun, storageEnabled } = await import('./storage/supabase.js');
+        if (storageEnabled) {
+          runId = await createRun({
+            session_id: sessionId,
+            instance_id: sessionId,
+            server_version: packageJSON.version,
+            proto_version: 'v2'
+          });
+        }
+      } catch (e) {
+        console.warn('[BrowserMCP HTTP] createRun failed:', (e as Error).message);
+      }
+
+      const state: SessionState = { sessionId, server, transport, runId };
       sessions.set(sessionId, state);
       console.error(`[BrowserMCP HTTP] Session initialized: ${sessionId}`);
       console.error(`[BrowserMCP HTTP] Active sessions: ${sessions.size}`);
@@ -345,6 +370,9 @@ program
       }
 
       const record = instanceRegistry.ensure(sessionId);
+      // Attach runId to context for ingestion
+      const runId = sessions.get(sessionId)!.runId;
+      record.context.runId = runId;
       (req as any).__context = record.context;
       (req as any).__instanceId = record.sessionId;
 

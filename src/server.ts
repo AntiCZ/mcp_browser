@@ -98,15 +98,75 @@ export async function createServerWithTools(options: Options): Promise<Server> {
         context.toolbox = toolbox;
       }
 
+      // Ingestion: timing and event identification
+      const startedAt = new Date();
+      const { randomUUID } = await import('node:crypto');
+      const eventUuid = randomUUID();
+      const seq = (context.toolSeq = (context.toolSeq || 0) + 1);
+
       try {
-        const result = await tool.handle(context, request.params.arguments ?? {});
+        const args = request.params.arguments ?? {};
+        const result = await tool.handle(context, args);
+
+        // Fire-and-forget insert for successful call
+        try {
+          const { insertToolCall, storageEnabled } = await import('./storage/supabase.js');
+          if (storageEnabled) {
+            await insertToolCall({
+              run_id: context.runId,
+              seq,
+              event_uuid: eventUuid,
+              tool_name: request.params.name,
+              started_at: startedAt.toISOString(),
+              ended_at: new Date().toISOString(),
+              success: true,
+              error_msg: null,
+              input_jsonb: args,
+              output_jsonb: result,
+              instance_id: context.instanceId,
+              session_id: context.instanceId,
+              tab_id: context.currentTabId,
+              url_at_call: undefined,
+            });
+          }
+        } catch (e) {
+          console.warn('[Storage] tool success ingest failed:', (e as Error).message);
+        }
+
         return result;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        // Fire-and-forget insert for failed call
+        try {
+          const { insertToolCall, storageEnabled } = await import('./storage/supabase.js');
+          if (storageEnabled) {
+            await insertToolCall({
+              run_id: context.runId,
+              seq,
+              event_uuid: eventUuid,
+              tool_name: request.params.name,
+              started_at: startedAt.toISOString(),
+              ended_at: new Date().toISOString(),
+              success: false,
+              error_msg: message,
+              input_jsonb: request.params.arguments ?? {},
+              output_jsonb: { error: message },
+              instance_id: context.instanceId,
+              session_id: context.instanceId,
+              tab_id: context.currentTabId,
+              url_at_call: undefined,
+            });
+          }
+        } catch (e) {
+          console.warn('[Storage] tool failure ingest failed:', (e as Error).message);
+        }
+
         return {
           content: [
             {
               type: "text",
-              text: `Error executing tool: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error executing tool: ${message}`,
             },
           ],
           isError: true,
