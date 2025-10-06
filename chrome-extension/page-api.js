@@ -15,31 +15,61 @@ if (!window.__mcpApiInstalled) {
     async scroll(opts) {
       const { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true } = opts || {};
       const behavior = smooth ? 'smooth' : 'auto';
-      const root = document.scrollingElement || document.documentElement || document.body;
-      const fullHeight = Math.max(root.scrollHeight, document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
-      const viewport = window.innerHeight || document.documentElement.clientHeight || root.clientHeight || 0;
 
-      function targetForBottom() {
-        return Math.max(0, fullHeight - viewport);
+      function getScrollRoot() {
+        const docRoot = document.scrollingElement || document.documentElement || document.body;
+        const hasDocScroll = (docRoot && (docRoot.scrollHeight - docRoot.clientHeight) > 10);
+        if (hasDocScroll) return docRoot;
+        const preferred = ['main', '#main', '#content', '.content', '[role="main"]', 'body > div'];
+        let best = null; let bestHeight = 0;
+        const pushIfScrollable = (el) => {
+          if (!el) return;
+          const cs = getComputedStyle(el);
+          const sh = el.scrollHeight, ch = el.clientHeight;
+          if (sh - ch > 10 && /(auto|scroll)/i.test(cs.overflowY || '')) {
+            if (sh > bestHeight) { best = el; bestHeight = sh; }
+          }
+        };
+        try { preferred.forEach(sel => document.querySelectorAll(sel).forEach(pushIfScrollable)); } catch {}
+        if (!best) {
+          const all = document.querySelectorAll('*');
+          const limit = Math.min(all.length, 2000);
+          for (let i = 0; i < limit; i++) pushIfScrollable(all[i]);
+        }
+        return best || docRoot;
       }
 
-      function clampY(y) {
-        return Math.max(0, Math.min(y, targetForBottom()));
+      function computeHeights(root) {
+        const fullHeight = Math.max(root.scrollHeight || 0, document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
+        const viewport = root === document.body || root === document.documentElement || root === document.scrollingElement
+          ? (window.innerHeight || document.documentElement.clientHeight || root.clientHeight || 0)
+          : (root.clientHeight || 0);
+        return { fullHeight, viewport };
       }
+
+      const root = getScrollRoot();
+      const { fullHeight, viewport } = computeHeights(root);
+      const targetForBottom = () => Math.max(0, fullHeight - viewport);
+      const clampY = (y) => Math.max(0, Math.min(y, targetForBottom()));
 
       for (let i = 0; i < steps; i++) {
         try {
           if (typeof percent === 'number') {
             const p = Math.max(0, Math.min(100, percent)) / 100;
             const y = clampY(Math.round((fullHeight - viewport) * p));
-            window.scrollTo({ top: y, behavior });
+            if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
+            else window.scrollTo({ top: y, behavior });
           } else if (typeof to === 'number') {
-            window.scrollTo({ top: clampY(to), behavior });
+            const y = clampY(to);
+            if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
+            else window.scrollTo({ top: y, behavior });
           } else if (to === 'top') {
-            window.scrollTo({ top: 0, behavior });
+            if (root && root.scrollTo) root.scrollTo({ top: 0, behavior });
+            else window.scrollTo({ top: 0, behavior });
           } else if (to === 'bottom') {
-            // Scroll near bottom (not exactly scrollHeight to accommodate dynamic content growth)
-            window.scrollTo({ top: targetForBottom(), behavior });
+            const y = targetForBottom();
+            if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
+            else window.scrollTo({ top: y, behavior });
           } else if (typeof to === 'string') {
             const el = document.querySelector(to);
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
