@@ -425,7 +425,7 @@
       const clickRes = await chrome.scripting.executeScript({
         target: { tabId },
         func: (ref) => {
-          const el = window.__elementTracker?.get(ref);
+          const el = window.__elementTracker?.getElementById ? window.__elementTracker.getElementById(ref) : null;
           if (!el) return { success:false, reason:'not-found' };
           try {
             el.scrollIntoView({ block:'center', inline:'center', behavior:'instant' });
@@ -495,7 +495,7 @@
       const res = await chrome.scripting.executeScript({
         target: { tabId },
         func: (ref) => {
-          const el = window.__elementTracker?.get(ref);
+          const el = window.__elementTracker?.getElementById ? window.__elementTracker.getElementById(ref) : null;
           if (!el) return false;
           const evt = new MouseEvent('mouseover', { view: window, bubbles: true, cancelable: true });
           el.dispatchEvent(evt);
@@ -512,7 +512,7 @@
       const res = await chrome.scripting.executeScript({
         target: { tabId },
         func: (ref, text, submit) => {
-          const el = window.__elementTracker?.get(ref);
+          const el = window.__elementTracker?.getElementById ? window.__elementTracker.getElementById(ref) : null;
           if (!el) return false;
           if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
           el.value = text;
@@ -535,7 +535,7 @@
       const res = await chrome.scripting.executeScript({
         target: { tabId },
         func: (ref, values) => {
-          const el = window.__elementTracker?.get(ref);
+          const el = window.__elementTracker?.getElementById ? window.__elementTracker.getElementById(ref) : null;
           if (!el || el.tagName !== 'SELECT') return false;
           Array.from(el.options).forEach(o => { o.selected = false; });
           (values || []).forEach(v => {
