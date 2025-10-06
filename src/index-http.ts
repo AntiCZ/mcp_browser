@@ -202,8 +202,8 @@ program
           console.error(`[BrowserMCP HTTP] Active sessions: ${sessions.size}`);
           // Close run in storage if enabled
           try {
-            const { finishRun } = await import('./storage/supabase.js');
-            await finishRun(existing?.runId, 'completed');
+          const { finishRun } = await import('./storage/supabase.js');
+          await finishRun(existing?.runId, 'completed');
           } catch (e) {
             // non-fatal
           }
@@ -218,14 +218,19 @@ program
       // Create run in storage (optional)
       let runId: string | undefined = undefined;
       try {
-        const { createRun, storageEnabled } = await import('./storage/supabase.js');
-        if (storageEnabled) {
+        const { createRun, ensureSession, storageEnabled } = await import('./storage/supabase.js');
+        const enabled = storageEnabled();
+        if (!enabled) {
+          console.error('[Storage] disabled (no SUPABASE_* env)');
+        }
+        if (enabled) {
           runId = await createRun({
-            session_id: sessionId,
+            // Avoid FK issues; sessions are optional in dev
             instance_id: sessionId,
             server_version: packageJSON.version,
             proto_version: 'v2'
           });
+          console.error('[Storage] created run:', runId ?? 'undefined');
         }
       } catch (e) {
         console.warn('[BrowserMCP HTTP] createRun failed:', (e as Error).message);

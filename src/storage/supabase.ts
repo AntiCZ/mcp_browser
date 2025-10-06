@@ -2,14 +2,19 @@
 
 type FetchLike = typeof fetch;
 
-const REST_URL = process.env.SUPABASE_REST_URL || process.env.BROWSER_MCP_SUPABASE_REST_URL;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.BROWSER_MCP_SUPABASE_SERVICE_KEY;
+function getConfig() {
+  const REST_URL = process.env.SUPABASE_REST_URL || process.env.BROWSER_MCP_SUPABASE_REST_URL;
+  const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.BROWSER_MCP_SUPABASE_SERVICE_KEY;
+  return { REST_URL, SERVICE_KEY } as const;
+}
 
 function enabled(): boolean {
+  const { REST_URL, SERVICE_KEY } = getConfig();
   return Boolean(REST_URL && SERVICE_KEY);
 }
 
 async function postJson<T>(path: string, body: unknown, fetchImpl: FetchLike = fetch): Promise<T> {
+  const { REST_URL, SERVICE_KEY } = getConfig();
   if (!REST_URL || !SERVICE_KEY) throw new Error("Supabase REST not configured");
   const url = `${REST_URL.replace(/\/$/, '')}${path}`;
   const res = await fetchImpl(url, {
@@ -49,9 +54,29 @@ export async function createRun(params: {
   return run?.run_id as string | undefined;
 }
 
+export async function ensureSession(params: { session_id: string; user_hash?: string | null }, fetchImpl?: FetchLike): Promise<void> {
+  if (!enabled()) return;
+  const { REST_URL, SERVICE_KEY } = getConfig();
+  const url = `${(REST_URL as string).replace(/\/$/, '')}/rest/v1/sessions?on_conflict=session_id`;
+  const res = await (fetchImpl || fetch)(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SERVICE_KEY as string,
+      'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=ignore-duplicates,return=minimal'
+    },
+    body: JSON.stringify({ session_id: params.session_id, user_hash: params.user_hash ?? null })
+  });
+  if (!res.ok) {
+    try { console.warn('[Storage] ensureSession failed', await res.text()); } catch {}
+  }
+}
+
 export async function finishRun(runId?: string, status: 'completed'|'failed'|'partial'='completed', fetchImpl?: FetchLike): Promise<void> {
   if (!enabled() || !runId) return;
   // Use upsert via RPC-less: PostgREST PATCH to a primary key needs /rest/v1/runs?run_id=eq.<id>
+  const { REST_URL, SERVICE_KEY } = getConfig();
   const url = `${(REST_URL as string).replace(/\/$/, '')}/rest/v1/runs?run_id=eq.${encodeURIComponent(runId)}`;
   const res = await (fetchImpl || fetch)(url, {
     method: 'PATCH',
@@ -115,7 +140,7 @@ export async function insertToolCall(params: {
   }
 }
 
-export const storageEnabled = enabled();
+export function storageEnabled() { return enabled(); }
 
 export async function insertArtifact(params: {
   call_id: string;

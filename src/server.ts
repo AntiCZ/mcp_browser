@@ -111,7 +111,7 @@ export async function createServerWithTools(options: Options): Promise<Server> {
         // Fire-and-forget insert for successful call
         try {
           const { insertToolCall, insertArtifact, storageEnabled } = await import('./storage/supabase.js');
-          if (storageEnabled) {
+          if (storageEnabled()) {
             const callId = await insertToolCall({
               run_id: context.runId,
               seq,
@@ -174,7 +174,7 @@ export async function createServerWithTools(options: Options): Promise<Server> {
         // Fire-and-forget insert for failed call
         try {
           const { insertToolCall, storageEnabled } = await import('./storage/supabase.js');
-          if (storageEnabled) {
+          if (storageEnabled()) {
             await insertToolCall({
               run_id: context.runId,
               seq,
