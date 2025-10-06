@@ -415,16 +415,56 @@
     messageHandlers.set('dom.click', async ({ ref, _envelopeTabId }) => {
       const tabId = typeof _envelopeTabId === 'number' ? _envelopeTabId : await getActiveTabId();
       await ensureElementTracker(tabId);
-      const res = await chrome.scripting.executeScript({
+      // Capture current URL to detect navigation
+      let prevUrl = '';
+      try {
+        const urlRes = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
+        prevUrl = urlRes?.[0]?.result || '';
+      } catch {}
+
+      const clickRes = await chrome.scripting.executeScript({
         target: { tabId },
         func: (ref) => {
           const el = window.__elementTracker?.get(ref);
-          if (el) { el.click(); return true; }
-          return false;
+          if (!el) return { success:false, reason:'not-found' };
+          try {
+            el.scrollIntoView({ block:'center', inline:'center', behavior:'instant' });
+            const rect = el.getBoundingClientRect();
+            const cx = Math.max(1, Math.floor(rect.left + rect.width/2));
+            const cy = Math.max(1, Math.floor(rect.top + rect.height/2));
+            const mk = (type) => (window.PointerEvent ? new PointerEvent(type, { bubbles:true, cancelable:true, view:window, pointerType:'mouse', isPrimary:true, button:0, buttons:1, clientX:cx, clientY:cy }) : new MouseEvent(type, { bubbles:true, cancelable:true, view:window, button:0, buttons:1, clientX:cx, clientY:cy }));
+            const seq = ['pointerover','mouseover','mousemove','pointerdown','mousedown','pointerup','mouseup','click'];
+            for (const t of seq) el.dispatchEvent(mk(t));
+            // Fallback for anchors: if default prevented, force navigation
+            let forced = false;
+            const a = el.closest && el.closest('a[href]');
+            if (a && typeof a.href === 'string') {
+              // If the element is not an anchor and no navigation likely occurred, leave fallback to background
+            }
+            return { success:true, forced };
+          } catch (e) {
+            return { success:false, reason:String(e) };
+          }
         },
         args: [ref]
       });
-      return { success: !!(res && res[0] && res[0].result), tabId };
+
+      const ok = !!(clickRes && clickRes[0] && clickRes[0].result && clickRes[0].result.success);
+
+      // Wait briefly for navigation or URL change; also detect new tab
+      const navChanged = await new Promise(async (resolve) => {
+        let done = false;
+        const timer = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
+        function cleanup() { clearTimeout(timer); try { chrome.webNavigation.onCommitted.removeListener(onCommitted); } catch {} try { chrome.tabs.onCreated.removeListener(onCreated); } catch {} }
+        async function onCommitted(details) {
+          if (details.tabId === tabId && details.url && details.url !== prevUrl) { if (!done) { done = true; cleanup(); resolve(true); } }
+        }
+        function onCreated(tab) { if (!done) { done = true; cleanup(); resolve(true); } }
+        try { chrome.webNavigation.onCommitted.addListener(onCommitted, { tabId }); } catch {}
+        try { chrome.tabs.onCreated.addListener(onCreated); } catch {}
+      });
+
+      return { success: ok, navigated: navChanged, tabId };
     });
 
     messageHandlers.set('dom.hover', async ({ ref, _envelopeTabId }) => {

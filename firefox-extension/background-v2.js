@@ -103,7 +103,27 @@ async function executeInTab(tabId, name, payload) {
 async function handleNavigate(tabId, { url }) { try { if (typeof tabId==='number') { await browserAPI.tabs.update(tabId, {url}); return { success:true, tabId }; } const t=await browserAPI.tabs.create({ url }); return { success:true, tabId:t.id }; } catch(e){ return { success:false, error:String(e) }; } }
 async function handleGoBack(tabId) { try { if (typeof tabId!=='number') return { success:false, error:'No active tab' }; if (typeof browserAPI.tabs.goBack==='function') await browserAPI.tabs.goBack(tabId); else await browserAPI.tabs.executeScript(tabId, { code:'window.history.back();' }); return { success:true }; } catch(e){ return { success:false, error:String(e) }; } }
 async function handleGoForward(tabId) { try { if (typeof tabId!=='number') return { success:false, error:'No active tab' }; if (typeof browserAPI.tabs.goForward==='function') await browserAPI.tabs.goForward(tabId); else await browserAPI.tabs.executeScript(tabId, { code:'window.history.forward();' }); return { success:true }; } catch(e){ return { success:false, error:String(e) }; } }
-async function handleClick(tabId, { ref, element }) { try { if (typeof tabId!=='number') return { success:false, error:'No active tab' }; const check = await browserAPI.tabs.sendMessage(tabId, { action:'checkClickType', ref }); if (check && check.needsTrustedClick) return await handleTrustedClickFirefox(tabId, ref, element, check); return await browserAPI.tabs.sendMessage(tabId, { action:'click', ref, element }); } catch(e){ return { success:false, error:String(e) }; } }
+async function handleClick(tabId, { ref, element }) {
+  try {
+    if (typeof tabId !== 'number') return { success:false, error:'No active tab' };
+    let prevUrl = '';
+    try { const u = await browserAPI.tabs.sendMessage(tabId, { action:'eval', code:'location.href' }); prevUrl = u && u.result || ''; } catch {}
+    const check = await browserAPI.tabs.sendMessage(tabId, { action:'checkClickType', ref });
+    let result;
+    if (check && check.needsTrustedClick) {
+      result = await handleTrustedClickFirefox(tabId, ref, element, check);
+    } else {
+      result = await browserAPI.tabs.sendMessage(tabId, { action:'click', ref, element });
+    }
+    const ok = !!(result && result.success);
+    const navigated = await new Promise((resolve)=>{
+      let done=false; const t=setTimeout(()=>{ if(!done){done=true; resolve(false);} },1200);
+      function onUpdated(id, change, tab) { if (id===tabId && change.url && change.url!==prevUrl) { if(!done){done=true; browserAPI.tabs.onUpdated.removeListener(onUpdated); clearTimeout(t); resolve(true);} } }
+      browserAPI.tabs.onUpdated.addListener(onUpdated);
+    });
+    return { success: ok, navigated, tabId };
+  } catch(e) { return { success:false, error:String(e) }; }
+}
 async function handleTrustedClickFirefox(tabId, ref, element, check) { try { if (check.isOAuth||check.opensNewWindow) { const urlRes = await browserAPI.tabs.sendMessage(tabId, { action:'getElementUrl', ref }); if (urlRes && urlRes.url) { const nt = await browserAPI.tabs.create({ url:urlRes.url, active:true }); return { success:true, tabId:nt.id, message:'Opened in new tab for secure interaction' }; } } return await browserAPI.tabs.sendMessage(tabId, { action:'trustedClick', ref, element }); } catch(e){ return await browserAPI.tabs.sendMessage(tabId, { action:'click', ref, element }); } }
 async function handleType(tabId, { ref, element, text, submit=false }) { try { if (typeof tabId!=='number') return { success:false, error:'No active tab' }; return await browserAPI.tabs.sendMessage(tabId, { action:'type', ref, element, text, submit }); } catch(e){ return { success:false, error:String(e) }; } }
 async function handleHover(tabId, { ref, element }) { try { if (typeof tabId!=='number') return { success:false, error:'No active tab' }; return await browserAPI.tabs.sendMessage(tabId, { action:'hover', ref, element }); } catch(e){ return { success:false, error:String(e) }; } }
