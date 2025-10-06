@@ -435,13 +435,10 @@
             const mk = (type) => (window.PointerEvent ? new PointerEvent(type, { bubbles:true, cancelable:true, view:window, pointerType:'mouse', isPrimary:true, button:0, buttons:1, clientX:cx, clientY:cy }) : new MouseEvent(type, { bubbles:true, cancelable:true, view:window, button:0, buttons:1, clientX:cx, clientY:cy }));
             const seq = ['pointerover','mouseover','mousemove','pointerdown','mousedown','pointerup','mouseup','click'];
             for (const t of seq) el.dispatchEvent(mk(t));
-            // Fallback for anchors: if default prevented, force navigation
-            let forced = false;
+            // Provide anchor info for potential background fallback
             const a = el.closest && el.closest('a[href]');
-            if (a && typeof a.href === 'string') {
-              // If the element is not an anchor and no navigation likely occurred, leave fallback to background
-            }
-            return { success:true, forced };
+            const anchor = a ? { href: a.href || null, target: a.getAttribute('target') || null } : null;
+            return { success:true, anchor };
           } catch (e) {
             return { success:false, reason:String(e) };
           }
@@ -450,11 +447,12 @@
       });
 
       const ok = !!(clickRes && clickRes[0] && clickRes[0].result && clickRes[0].result.success);
+      const anchor = (clickRes && clickRes[0] && clickRes[0].result && clickRes[0].result.anchor) || null;
 
       // Wait briefly for navigation or URL change; also detect new tab
-      const navChanged = await new Promise(async (resolve) => {
+      let navChanged = await new Promise(async (resolve) => {
         let done = false;
-        const timer = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
+        const timer = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1800);
         function cleanup() { clearTimeout(timer); try { chrome.webNavigation.onCommitted.removeListener(onCommitted); } catch {} try { chrome.tabs.onCreated.removeListener(onCreated); } catch {} }
         async function onCommitted(details) {
           if (details.tabId === tabId && details.url && details.url !== prevUrl) { if (!done) { done = true; cleanup(); resolve(true); } }
@@ -463,6 +461,30 @@
         try { chrome.webNavigation.onCommitted.addListener(onCommitted, { tabId }); } catch {}
         try { chrome.tabs.onCreated.addListener(onCreated); } catch {}
       });
+
+      // If no navigation detected and we have an anchor href, force navigation
+      if (!navChanged && anchor && anchor.href) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (href, target) => {
+              try {
+                if (target === '_blank') window.open(href, '_blank');
+                else window.location.assign(href);
+                return true;
+              } catch { return false; }
+            },
+            args: [anchor.href, anchor.target]
+          });
+          // Wait a bit again for navigation commit
+          navChanged = await new Promise((resolve) => {
+            let done = false;
+            const timer = setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
+            function onCommitted(details) { if (details.tabId === tabId && details.url && details.url !== prevUrl) { if (!done) { done = true; chrome.webNavigation.onCommitted.removeListener(onCommitted); clearTimeout(timer); resolve(true); } } }
+            chrome.webNavigation.onCommitted.addListener(onCommitted, { tabId });
+          });
+        } catch {}
+      }
 
       return { success: ok, navigated: navChanged, tabId };
     });

@@ -116,11 +116,25 @@ async function handleClick(tabId, { ref, element }) {
       result = await browserAPI.tabs.sendMessage(tabId, { action:'click', ref, element });
     }
     const ok = !!(result && result.success);
-    const navigated = await new Promise((resolve)=>{
+    let navigated = await new Promise((resolve)=>{
       let done=false; const t=setTimeout(()=>{ if(!done){done=true; resolve(false);} },1200);
       function onUpdated(id, change, tab) { if (id===tabId && change.url && change.url!==prevUrl) { if(!done){done=true; browserAPI.tabs.onUpdated.removeListener(onUpdated); clearTimeout(t); resolve(true);} } }
       browserAPI.tabs.onUpdated.addListener(onUpdated);
     });
+    if (!navigated) {
+      // Attempt forced anchor navigation fallback
+      try {
+        const urlRes = await browserAPI.tabs.sendMessage(tabId, { action:'getElementUrl', ref });
+        if (urlRes && urlRes.url) {
+          await browserAPI.tabs.sendMessage(tabId, { action:'eval', code:`(function(h){ try { location.assign(h); return true; } catch(e){ return false; } })(${JSON.stringify(urlRes.url)})` });
+          navigated = await new Promise((resolve)=>{
+            let done=false; const t=setTimeout(()=>{ if(!done){done=true; resolve(false);} },1200);
+            function onUpdated(id, change, tab) { if (id===tabId && change.url && change.url!==prevUrl) { if(!done){done=true; browserAPI.tabs.onUpdated.removeListener(onUpdated); clearTimeout(t); resolve(true);} } }
+            browserAPI.tabs.onUpdated.addListener(onUpdated);
+          });
+        }
+      } catch {}
+    }
     return { success: ok, navigated, tabId };
   } catch(e) { return { success:false, error:String(e) }; }
 }
