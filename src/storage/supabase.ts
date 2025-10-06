@@ -140,7 +140,11 @@ export async function insertToolCall(params: {
   }
 }
 
-export function storageEnabled() { return enabled(); }
+export function storageEnabled() {
+  const flag = process.env.BROWSER_MCP_STORAGE_ENABLED;
+  if (typeof flag === 'string' && /^(0|false)$/i.test(flag.trim())) return false;
+  return enabled();
+}
 
 export async function insertArtifact(params: {
   call_id: string;

@@ -163,6 +163,25 @@ Smoke Tests
 
 Next Steps (Code Integration)
 - Instrument HTTP MCP middleware and WS daemon to emit telemetry.
-- Add extensions’ client‑side event UUID, content hashing, and optional signature calculations.
+- Add extensions’ client-side event UUID, content hashing, and optional signature calculations.
 - Implement batch hint aggregator (Edge Function/pg_cron) and /hints/lookup with Redis cache.
+
+Operational Toggles
+- Storage enablement
+  - Behavior: Ingestion only runs when both SUPABASE_REST_URL and SUPABASE_SERVICE_KEY are set AND the optional toggle BROWSER_MCP_STORAGE_ENABLED is not explicitly disabled.
+  - Env vars:
+    - SUPABASE_REST_URL: PostgREST URL (e.g., http://127.0.0.1:54321)
+    - SUPABASE_SERVICE_KEY: Service Role key
+    - BROWSER_MCP_STORAGE_ENABLED: '0' or 'false' to force-disable; otherwise enabled if keys present.
+  - Code path: src/storage/supabase.ts → storageEnabled().
+
+Ideal Functioning (Data Expectations)
+- On new HTTP session:
+  - Insert sessions row → create run with session_id + instance_id; status=running; version/proto recorded.
+- For each tool call:
+  - Insert tool_calls with seq, input/output JSON, success, timing; context: instance_id, session_id, tab_id.
+  - For screenshots: detect image content; compute content_hash; insert artifacts row with storage_path.
+  - For navigation: set url_at_call (from args/context/snapshot/href) and upsert page_signatures; patch page_sig_id; touch last_seen.
+- After aggregator run:
+  - hint_stats updated for visited pages with success/error counts and average latency.
 
