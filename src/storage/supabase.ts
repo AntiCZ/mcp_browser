@@ -163,3 +163,84 @@ export async function insertArtifact(params: {
     console.warn('[Storage] insertArtifact failed:', (e as Error).message);
   }
 }
+
+// Helper: normalize URL to scheme+host+path (strip query/fragment)
+export function normalizeUrl(input?: string | null): { url_norm: string | null, domain: string | null } {
+  if (!input) return { url_norm: null, domain: null };
+  try {
+    const u = new URL(input);
+    const path = u.pathname || '/';
+    const host = u.host.toLowerCase();
+    const scheme = (u.protocol || 'http:').toLowerCase();
+    return { url_norm: `${scheme}//${host}${path}`, domain: u.hostname.toLowerCase() };
+  } catch {
+    return { url_norm: null, domain: null };
+  }
+}
+
+export async function upsertPageSignature(params: {
+  url_norm: string;
+  domain: string;
+  canonical_link_hash?: string | null;
+  title_hash?: string | null;
+  dom_fingerprint_hash?: string | null;
+}, fetchImpl?: FetchLike): Promise<number | undefined> {
+  if (!enabled()) return undefined;
+  const { REST_URL, SERVICE_KEY } = getConfig();
+  // Try to find existing
+  const selUrl = `${(REST_URL as string).replace(/\/$/, '')}/rest/v1/page_signatures?select=page_sig_id&url_norm=eq.${encodeURIComponent(params.url_norm)}&limit=1`;
+  const selRes = await (fetchImpl || fetch)(selUrl, { headers: { 'apikey': SERVICE_KEY as string, 'Authorization': `Bearer ${SERVICE_KEY}` } });
+  if (selRes.ok) {
+    try {
+      const arr = await selRes.json();
+      if (Array.isArray(arr) && arr[0]?.page_sig_id) return arr[0].page_sig_id as number;
+    } catch {}
+  }
+  // Insert new
+  const body = {
+    url_norm: params.url_norm,
+    domain: params.domain,
+    canonical_link_hash: params.canonical_link_hash ?? null,
+    title_hash: params.title_hash ?? null,
+    dom_fingerprint_hash: params.dom_fingerprint_hash ?? null,
+  };
+  const rows = await postJson<any[]>(`/rest/v1/page_signatures`, body, fetchImpl);
+  const row = rows && rows[0];
+  return row?.page_sig_id as number | undefined;
+}
+
+export async function patchToolCall(call_id: string, patch: Record<string, any>, fetchImpl?: FetchLike): Promise<void> {
+  if (!enabled()) return;
+  const { REST_URL, SERVICE_KEY } = getConfig();
+  const url = `${(REST_URL as string).replace(/\/$/, '')}/rest/v1/tool_calls?call_id=eq.${encodeURIComponent(call_id)}`;
+  const res = await (fetchImpl || fetch)(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SERVICE_KEY as string,
+      'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!res.ok) {
+    try { console.warn('[Storage] patchToolCall failed', await res.text()); } catch {}
+  }
+}
+
+export async function touchPageSignature(page_sig_id: number, fetchImpl?: FetchLike): Promise<void> {
+  if (!enabled()) return;
+  const { REST_URL, SERVICE_KEY } = getConfig();
+  const url = `${(REST_URL as string).replace(/\/$/, '')}/rest/v1/page_signatures?page_sig_id=eq.${page_sig_id}`;
+  const res = await (fetchImpl || fetch)(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SERVICE_KEY as string,
+      'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ last_seen: new Date().toISOString() })
+  });
+  if (!res.ok) {
+    try { console.warn('[Storage] touchPageSignature failed', await res.text()); } catch {}
+  }
+}

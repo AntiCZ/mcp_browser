@@ -110,8 +110,10 @@ export async function createServerWithTools(options: Options): Promise<Server> {
 
         // Fire-and-forget insert for successful call
         try {
-          const { insertToolCall, insertArtifact, storageEnabled } = await import('./storage/supabase.js');
+          const { insertToolCall, insertArtifact, storageEnabled, normalizeUrl, upsertPageSignature, patchToolCall } = await import('./storage/supabase.js');
           if (storageEnabled()) {
+            // Extract URL at call when present in args
+            const urlAtCall = typeof (args as any)?.url === 'string' ? (args as any).url : undefined;
             const callId = await insertToolCall({
               run_id: context.runId,
               seq,
@@ -126,8 +128,65 @@ export async function createServerWithTools(options: Options): Promise<Server> {
               instance_id: context.instanceId,
               session_id: context.instanceId,
               tab_id: context.currentTabId,
-              url_at_call: undefined,
+              url_at_call: urlAtCall,
             });
+
+            if (callId && urlAtCall) {
+              try { await patchToolCall(callId, { url_at_call: urlAtCall }); } catch {}
+            }
+
+            // Upsert page_signature when URL is known or can be fetched
+            let effectiveUrl = urlAtCall;
+            // Try to extract URL from result text (scaffold snapshot includes "URL: ...")
+            if (!effectiveUrl && context.lastUrl) {
+              effectiveUrl = context.lastUrl;
+              if (callId) await patchToolCall(callId, { url_at_call: effectiveUrl });
+            }
+            if (!effectiveUrl) {
+              try {
+                const firstText = Array.isArray((result as any)?.content) ? (result as any).content.find((c: any) => c?.type === 'text') : null;
+                const txt = firstText?.text as string | undefined;
+                if (txt) {
+                  const m = txt.match(/URL:\s*(\S+)/);
+                  if (m && m[1]) {
+                    effectiveUrl = m[1];
+                    if (callId) await patchToolCall(callId, { url_at_call: effectiveUrl });
+                  }
+                }
+              } catch {/* ignore */}
+            }
+            if (!effectiveUrl) {
+              try {
+                const hrefResp = await context.sendSocketMessage("js.execute", {
+                  code: "(function(){return window.location.href})()",
+                  timeout: 1000,
+                  unsafe: true
+                }, { timeoutMs: 1200 });
+                const href = (hrefResp && (hrefResp.result ?? hrefResp.data?.result ?? hrefResp.payload?.result)) as string | undefined;
+                if (href && typeof href === 'string') {
+                  effectiveUrl = href;
+                  if (callId) await patchToolCall(callId, { url_at_call: effectiveUrl });
+                }
+              } catch {/* ignore */}
+            }
+
+            if (callId && effectiveUrl) {
+              const { url_norm, domain } = normalizeUrl(effectiveUrl);
+              if (url_norm && domain) {
+                try {
+                  const pageSigId = await upsertPageSignature({ url_norm, domain });
+                  if (pageSigId) {
+                    await patchToolCall(callId, { page_sig_id: pageSigId });
+                    try {
+                      const { touchPageSignature } = await import('./storage/supabase.js');
+                      await touchPageSignature(pageSigId);
+                    } catch {}
+                  }
+                } catch (e) {
+                  console.warn('[Storage] upsertPageSignature failed:', (e as Error).message);
+                }
+              }
+            }
 
             // Artifact detection: capture image outputs (screenshots)
             try {
@@ -175,6 +234,7 @@ export async function createServerWithTools(options: Options): Promise<Server> {
         try {
           const { insertToolCall, storageEnabled } = await import('./storage/supabase.js');
           if (storageEnabled()) {
+            const urlAtCall = typeof (request.params.arguments as any)?.url === 'string' ? (request.params.arguments as any).url : undefined;
             await insertToolCall({
               run_id: context.runId,
               seq,
@@ -189,7 +249,7 @@ export async function createServerWithTools(options: Options): Promise<Server> {
               instance_id: context.instanceId,
               session_id: context.instanceId,
               tab_id: context.currentTabId,
-              url_at_call: undefined,
+              url_at_call: urlAtCall,
             });
           }
         } catch (e) {

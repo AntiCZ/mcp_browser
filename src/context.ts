@@ -35,6 +35,7 @@ export class Context {
   // Storage/ingestion context
   public runId?: string;
   public toolSeq: number = 0;
+  public lastUrl?: string;
 
   get ws(): WebSocket {
     if (!this._ws) {

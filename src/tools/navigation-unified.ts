@@ -41,6 +41,8 @@ export const browser_navigate: Tool = {
         }
 
         const response = await context.sendSocketMessage("browser_navigate", { url, detectPopups: true });
+        // Persist URL on context for storage ingestion
+        try { (context as any).lastUrl = url; } catch {}
         navigationResult = `Navigated to ${url}`;
 
         // Check for popup detection

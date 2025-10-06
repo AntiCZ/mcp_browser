@@ -32,6 +32,13 @@ export async function captureAriaSnapshot(
       context.currentTabId = String(response.tabId);
     }
 
+    // Try to persist current URL on context for later ingestion
+    try {
+      const m = typeof response.snapshot === 'string' ? response.snapshot.match(/URL:\s*(\S+)/) : null;
+      if (m && m[1]) {
+        context.lastUrl = m[1];
+      }
+    } catch {/* ignore */}
     const instanceContext = buildInstanceContext();
     const fullText = instanceContext + (status ? `${status}\n\n${response.snapshot}` : response.snapshot);
     return {
@@ -59,6 +66,13 @@ export async function captureAriaSnapshot(
     context.currentTabId = String(response.tabId);
   }
 
+  // Try to persist current URL on context for later ingestion
+  try {
+    const m = typeof response.snapshot === 'string' ? response.snapshot.match(/URL:\s*(\S+)/) : null;
+    if (m && m[1]) {
+      context.lastUrl = m[1];
+    }
+  } catch {/* ignore */}
   const instanceContext = buildInstanceContext();
   const fullText = instanceContext + (status ? `${status}\n\n${response.snapshot}` : response.snapshot);
   return {

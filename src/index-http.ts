@@ -224,8 +224,13 @@ program
           console.error('[Storage] disabled (no SUPABASE_* env)');
         }
         if (enabled) {
+          try {
+            await ensureSession({ session_id: sessionId, user_hash: null });
+          } catch (e) {
+            console.warn('[Storage] ensureSession failed:', (e as Error).message);
+          }
           runId = await createRun({
-            // Avoid FK issues; sessions are optional in dev
+            session_id: sessionId,
             instance_id: sessionId,
             server_version: packageJSON.version,
             proto_version: 'v2'
@@ -351,6 +356,50 @@ program
       if (parsedUrl.pathname === "/ws-message") {
         await handleDaemonBridge({ req, res, sessions, instanceRegistry });
         return;
+      }
+
+      if (parsedUrl.pathname === "/hints/lookup" && req.method === 'POST') {
+        console.error('[BrowserMCP HTTP] /hints/lookup request received');
+        let raw = '';
+        for await (const chunk of req) raw += chunk.toString();
+        try {
+          const body = raw ? JSON.parse(raw) : {};
+          const url = body?.url as string | undefined;
+          if (!url) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing url' }));
+            return;
+          }
+          const { normalizeUrl } = await import('./storage/supabase.js');
+          const REST_URL = process.env.SUPABASE_REST_URL;
+          const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+          const norm = normalizeUrl(url);
+          let page_sig_id: number | undefined;
+          if (norm.url_norm && REST_URL && SERVICE_KEY) {
+            const selUrl = `${REST_URL.replace(/\/$/, '')}/rest/v1/page_signatures?select=page_sig_id&url_norm=eq.${encodeURIComponent(norm.url_norm)}&limit=1`;
+            const r = await fetch(selUrl, { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } });
+            if (r.ok) {
+              const arr = await r.json();
+              page_sig_id = arr?.[0]?.page_sig_id;
+            }
+          }
+          let pageHints: any = null;
+          if (page_sig_id && (process.env.SUPABASE_REST_URL && process.env.SUPABASE_SERVICE_KEY)) {
+            const hsUrl = `${process.env.SUPABASE_REST_URL!.replace(/\/$/, '')}/rest/v1/hint_stats?scope=eq.page&page_sig_id=eq.${page_sig_id}&limit=1`;
+            const r2 = await fetch(hsUrl, { headers: { 'apikey': process.env.SUPABASE_SERVICE_KEY!, 'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY!}` } });
+            if (r2.ok) {
+              const arr2 = await r2.json();
+              pageHints = arr2?.[0] ?? null;
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ url, page_sig_id: page_sig_id ?? null, page_hints: pageHints }));
+          return;
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Lookup failed', message: (e as Error).message }));
+          return;
+        }
       }
 
       if (parsedUrl.pathname !== "/mcp") {
