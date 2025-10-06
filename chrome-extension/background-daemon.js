@@ -175,7 +175,7 @@
             const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
             return await Promise.race([run(), timeoutPromise]);
           },
-          args: [code, timeout]
+          args: [String(code ?? ''), Number(timeout ?? 5000)]
         });
 
         const value = execResults && execResults[0] ? execResults[0].result : undefined;
@@ -246,7 +246,7 @@
               const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
               return await Promise.race([run(), timeoutPromise]);
             },
-            args: [code, timeout]
+            args: [String(code ?? ''), Number(timeout ?? 5000)]
           });
           value = execResults && execResults[0] ? execResults[0].result : undefined;
         } catch (e) {
@@ -279,7 +279,7 @@
               const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
               return await Promise.race([run(), timeoutPromise]);
             },
-            args: [code, timeout]
+            args: [String(code ?? ''), Number(timeout ?? 5000)]
           });
           value = fallback && fallback[0] ? fallback[0].result : undefined;
           log('Unsafe execution fallback (ISOLATED) used');
