@@ -13,20 +13,38 @@ if (!window.__mcpApiInstalled) {
      * @param {Object} opts - Options: { to, steps, delayMs, smooth }
      */
     async scroll(opts) {
-      const { to = 'bottom', steps = 1, delayMs = 500, smooth = true } = opts;
+      const { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true } = opts || {};
       const behavior = smooth ? 'smooth' : 'auto';
+      const root = document.scrollingElement || document.documentElement || document.body;
+      const fullHeight = Math.max(root.scrollHeight, document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
+      const viewport = window.innerHeight || document.documentElement.clientHeight || root.clientHeight || 0;
+
+      function targetForBottom() {
+        return Math.max(0, fullHeight - viewport);
+      }
+
+      function clampY(y) {
+        return Math.max(0, Math.min(y, targetForBottom()));
+      }
 
       for (let i = 0; i < steps; i++) {
-        if (typeof to === 'number') {
-          window.scrollTo({ top: to, behavior });
-        } else if (to === 'top') {
-          window.scrollTo({ top: 0, behavior });
-        } else if (to === 'bottom') {
-          window.scrollTo({ top: document.body.scrollHeight, behavior });
-        } else {
-          const el = document.querySelector(to);
-          if (el) el.scrollIntoView({ behavior });
-        }
+        try {
+          if (typeof percent === 'number') {
+            const p = Math.max(0, Math.min(100, percent)) / 100;
+            const y = clampY(Math.round((fullHeight - viewport) * p));
+            window.scrollTo({ top: y, behavior });
+          } else if (typeof to === 'number') {
+            window.scrollTo({ top: clampY(to), behavior });
+          } else if (to === 'top') {
+            window.scrollTo({ top: 0, behavior });
+          } else if (to === 'bottom') {
+            // Scroll near bottom (not exactly scrollHeight to accommodate dynamic content growth)
+            window.scrollTo({ top: targetForBottom(), behavior });
+          } else if (typeof to === 'string') {
+            const el = document.querySelector(to);
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+          }
+        } catch {}
         if (i < steps - 1) await delay(delayMs);
       }
       return true;

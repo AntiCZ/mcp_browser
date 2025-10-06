@@ -53,6 +53,38 @@ browserAPI.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const args = Array.isArray(request.args) ? request.args : [];
           try {
             switch (method) {
+              case 'scroll': {
+                const [opts] = args;
+                const { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true } = opts || {};
+                const delay = (ms)=>new Promise(r=>setTimeout(r,ms));
+                const behavior = smooth ? 'smooth' : 'auto';
+                const root = document.scrollingElement || document.documentElement || document.body;
+                const fullHeight = Math.max(root.scrollHeight, document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
+                const viewport = window.innerHeight || document.documentElement.clientHeight || root.clientHeight || 0;
+                const targetForBottom = ()=>Math.max(0, fullHeight - viewport);
+                const clampY = (y)=>Math.max(0, Math.min(y, targetForBottom()));
+                for (let i=0;i<steps;i++){
+                  try{
+                    if (typeof percent === 'number') {
+                      const p = Math.max(0, Math.min(100, percent)) / 100;
+                      const y = clampY(Math.round((fullHeight - viewport) * p));
+                      window.scrollTo({ top: y, behavior });
+                    } else if (typeof to === 'number') {
+                      window.scrollTo({ top: clampY(to), behavior });
+                    } else if (to === 'top') {
+                      window.scrollTo({ top: 0, behavior });
+                    } else if (to === 'bottom') {
+                      window.scrollTo({ top: targetForBottom(), behavior });
+                    } else if (typeof to === 'string') {
+                      const el = document.querySelector(to);
+                      if (el && el.scrollIntoView) el.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+                    }
+                  } catch {}
+                  if (i < steps - 1) await delay(delayMs);
+                }
+                sendResponse({ success: true, result: true });
+                break;
+              }
               case 'query': {
                 const [selector, opts] = args;
                 const limit = opts?.limit ?? 100;

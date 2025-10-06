@@ -50,14 +50,20 @@ export const browserSetInput: Tool = {
 export const browserScroll: Tool = {
   schema: {
     name: 'browser_scroll',
-    description: 'Advanced scrolling with steps and delays. Perfect for loading virtualized content.',
+    description: 'Advanced scrolling with steps and delays. Supports top/bottom/selector/pixels and percent of page height.',
     inputSchema: {
       type: 'object',
       properties: {
         to: {
           type: ['string', 'number'],
-          description: 'Where to scroll: "bottom", "top", selector string, or pixel value',
+          description: 'Where to scroll: "bottom", "top", a CSS selector string (scrollIntoView), or an absolute pixel value',
           default: 'bottom'
+        },
+        percent: {
+          type: 'number',
+          description: 'If provided (0-100), scroll to this percent of total page height (overrides "to" when set).',
+          minimum: 0,
+          maximum: 100
         },
         steps: {
           type: 'number',
@@ -77,17 +83,17 @@ export const browserScroll: Tool = {
       }
     }
   },
-  handle: async (context: Context, { to = 'bottom', steps = 1, delayMs = 500, smooth = true }) => {
+  handle: async (context: Context, { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true }) => {
     try {
       await context.sendSocketMessage("js.execute", {
         method: 'scroll',
-        args: [{ to, steps, delayMs, smooth }],
+        args: [{ to, percent, steps, delayMs, smooth }],
         timeout: (steps * delayMs) + 5000
       }, { timeoutMs: (steps * delayMs) + 5500 });
       return {
         content: [{
           type: "text",
-          text: `Scrolled to ${to}`
+          text: typeof percent === 'number' ? `Scrolled to ${percent}% of page` : `Scrolled to ${to}`
         }]
       };
     } catch (error: any) {
