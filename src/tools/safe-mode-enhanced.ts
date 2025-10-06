@@ -85,15 +85,16 @@ export const browserScroll: Tool = {
   },
   handle: async (context: Context, { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true }) => {
     try {
-      await context.sendSocketMessage("js.execute", {
+      const resp = await context.sendSocketMessage("js.execute", {
         method: 'scroll',
         args: [{ to, percent, steps, delayMs, smooth }],
         timeout: (steps * delayMs) + 5000
       }, { timeoutMs: (steps * delayMs) + 5500 });
+      const ok = !!(resp && (resp.result === true || resp.success === true));
       return {
         content: [{
           type: "text",
-          text: typeof percent === 'number' ? `Scrolled to ${percent}% of page` : `Scrolled to ${to}`
+          text: ok ? (typeof percent === 'number' ? `Scrolled to ${percent}% of page` : `Scrolled to ${to}`) : 'Scroll failed'
         }]
       };
     } catch (error: any) {

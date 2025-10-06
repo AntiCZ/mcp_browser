@@ -137,7 +137,8 @@
       }
     });
 
-    messageHandlers.set('js.execute', async ({ code, timeout = 5000, unsafe = null, _envelopeTabId }) => {
+    messageHandlers.set('js.execute', async (payload) => {
+      const { code, timeout = 5000, unsafe = null, _envelopeTabId, method, args = [] } = payload || {};
       if (unsafe && !unsafeModeEnabled) {
         throw new Error('Unsafe mode not enabled');
       }
@@ -158,6 +159,33 @@
           }
         } catch (e) {
           warn('Failed ensuring page API:', e);
+        }
+
+        // If a structured method is provided, dispatch to window.__mcpApi[method]
+        if (typeof method === 'string') {
+          try {
+            const opArgs = (() => { try { return JSON.parse(JSON.stringify(args || [])); } catch { return []; } })();
+            const execResults = await chrome.scripting.executeScript({
+              target: { tabId },
+              world: 'ISOLATED',
+              func: async (methodName, opArgs, maxMs) => {
+                const run = async () => {
+                  const api = window.__mcpApi;
+                  if (!api || typeof api[methodName] !== 'function') {
+                    throw new Error(`__mcpApi method not available: ${methodName}`);
+                  }
+                  return await api[methodName].apply(api, opArgs || []);
+                };
+                const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));
+                return await Promise.race([run(), timeoutPromise]);
+              },
+              args: [String(method), opArgs, Number(timeout || 5000)]
+            });
+            const value = execResults && execResults[0] ? execResults[0].result : undefined;
+            return { result: value };
+          } catch (e) {
+            warn('Safe method execution failed:', e);
+          }
         }
 
         // Execute code via __mcpApi.exec so top-level await and `api.*` work
