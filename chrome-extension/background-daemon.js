@@ -163,6 +163,7 @@
 
         // If a structured method is provided, dispatch to window.__mcpApi[method]
         if (typeof method === 'string') {
+          log('js.execute safe method dispatch:', method, { argCount: Array.isArray(args)?args.length:0, timeout });
           try {
             const opArgs = (() => { try { return JSON.parse(JSON.stringify(args || [])); } catch { return []; } })();
             const execResults = await chrome.scripting.executeScript({
@@ -174,6 +175,7 @@
                   if (!api || typeof api[methodName] !== 'function') {
                     throw new Error(`__mcpApi method not available: ${methodName}`);
                   }
+                  try { console.log('[MCP API Dispatch]', methodName, 'args:', opArgs); } catch {}
                   return await api[methodName].apply(api, opArgs || []);
                 };
                 const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout')), Math.max(0, maxMs || 5000)));

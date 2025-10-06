@@ -15,6 +15,7 @@ if (!window.__mcpApiInstalled) {
     async scroll(opts) {
       const { to = 'bottom', percent, steps = 1, delayMs = 500, smooth = true } = opts || {};
       const behavior = smooth ? 'smooth' : 'auto';
+      try { console.log('[MCP Scroll] opts:', { to, percent, steps, delayMs, smooth }); } catch {}
 
       function getScrollRoot() {
         const docRoot = document.scrollingElement || document.documentElement || document.body;
@@ -49,6 +50,12 @@ if (!window.__mcpApiInstalled) {
 
       const root = getScrollRoot();
       const { fullHeight, viewport } = computeHeights(root);
+      try {
+        const descr = root === document.body || root === document.documentElement || root === document.scrollingElement
+          ? (root === document.body ? 'body' : (root === document.documentElement ? 'documentElement' : 'scrollingElement'))
+          : (root.tagName.toLowerCase() + (root.id ? ('#' + root.id) : '') + (root.className ? ('.' + String(root.className).split(/\s+/).slice(0,2).join('.')) : ''));
+        console.log('[MCP Scroll] root:', descr, 'fullHeight:', fullHeight, 'viewport:', viewport);
+      } catch {}
       const targetForBottom = () => Math.max(0, fullHeight - viewport);
       const clampY = (y) => Math.max(0, Math.min(y, targetForBottom()));
 
@@ -57,26 +64,32 @@ if (!window.__mcpApiInstalled) {
           if (typeof percent === 'number') {
             const p = Math.max(0, Math.min(100, percent)) / 100;
             const y = clampY(Math.round((fullHeight - viewport) * p));
+            try { console.log('[MCP Scroll] step', i+1, '/', steps, 'percent ->', percent, 'y=', y); } catch {}
             if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
             else window.scrollTo({ top: y, behavior });
           } else if (typeof to === 'number') {
             const y = clampY(to);
+            try { console.log('[MCP Scroll] step', i+1, '/', steps, 'absolute ->', to, 'clamped=', y); } catch {}
             if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
             else window.scrollTo({ top: y, behavior });
           } else if (to === 'top') {
+            try { console.log('[MCP Scroll] step', i+1, '/', steps, 'top'); } catch {}
             if (root && root.scrollTo) root.scrollTo({ top: 0, behavior });
             else window.scrollTo({ top: 0, behavior });
           } else if (to === 'bottom') {
             const y = targetForBottom();
+            try { console.log('[MCP Scroll] step', i+1, '/', steps, 'bottom y=', y); } catch {}
             if (root && root.scrollTo) root.scrollTo({ top: y, behavior });
             else window.scrollTo({ top: y, behavior });
           } else if (typeof to === 'string') {
             const el = document.querySelector(to);
             if (el && el.scrollIntoView) el.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+            try { console.log('[MCP Scroll] step', i+1, '/', steps, 'selector ->', to, 'found:', !!el); } catch {}
           }
         } catch {}
         if (i < steps - 1) await delay(delayMs);
       }
+      try { console.log('[MCP Scroll] done'); } catch {}
       return true;
     },
 
