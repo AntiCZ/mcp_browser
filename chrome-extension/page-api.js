@@ -382,21 +382,11 @@ if (!window.__mcpApiInstalled) {
      * @param {Array} args - Optional arguments to pass
      */
     exec(code, args = []) {
-      // Wrap user code in an ES module that exports async function
-      const moduleSrc = `
-        const api = window.__mcpApi;
-        export default async (..._args) => {
-          ${code}
-        };
-      `;
-
-      // Create blob URL, import module, execute, cleanup
-      const blob = new Blob([moduleSrc], { type: 'text/javascript' });
-      const url = URL.createObjectURL(blob);
-
-      return import(url)
-        .then(m => m.default(...args))
-        .finally(() => URL.revokeObjectURL(url));
+      // Note: Many sites set CSP that blocks blob: or inline scripts. To avoid
+      // CSP violations and noisy console errors, we do NOT attempt dynamic
+      // import/eval here. Use the structured safe operations instead (query,
+      // getHTML, waitFor, setInput, scroll, etc.).
+      return Promise.reject(new Error('Safe exec disabled by CSP. Use method-based operations (api.query, api.getHTML, api.waitFor, api.scroll, etc.).'));
     }
   };
 
