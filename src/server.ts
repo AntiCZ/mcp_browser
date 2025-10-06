@@ -110,9 +110,9 @@ export async function createServerWithTools(options: Options): Promise<Server> {
 
         // Fire-and-forget insert for successful call
         try {
-          const { insertToolCall, storageEnabled } = await import('./storage/supabase.js');
+          const { insertToolCall, insertArtifact, storageEnabled } = await import('./storage/supabase.js');
           if (storageEnabled) {
-            await insertToolCall({
+            const callId = await insertToolCall({
               run_id: context.runId,
               seq,
               event_uuid: eventUuid,
@@ -128,6 +128,40 @@ export async function createServerWithTools(options: Options): Promise<Server> {
               tab_id: context.currentTabId,
               url_at_call: undefined,
             });
+
+            // Artifact detection: capture image outputs (screenshots)
+            try {
+              const content = (result as any)?.content;
+              if (Array.isArray(content) && callId) {
+                for (const item of content) {
+                  if (item && item.type === 'image' && typeof item.data === 'string') {
+                    // Normalize base64
+                    let base64 = item.data;
+                    if (base64.startsWith('data:')) {
+                      const parts = base64.split(',');
+                      base64 = parts[1] || base64;
+                    }
+                    // Compute hash and size
+                    const { createHash } = await import('node:crypto');
+                    const hash = createHash('sha256').update(base64, 'base64').digest('hex');
+                    const mime: string = item.mimeType || 'image/png';
+                    const ext = mime.includes('jpeg') ? 'jpg' : (mime.split('/')[1] || 'png');
+                    const sizeBytes = Math.floor(base64.length * 0.75); // rough base64→bytes
+                    const storagePath = `screenshots/ingest/${hash}.${ext}`;
+
+                    await insertArtifact({
+                      call_id: callId,
+                      type: 'screenshot',
+                      content_hash: hash,
+                      size_bytes: sizeBytes,
+                      storage_path: storagePath,
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('[Storage] artifact detection failed:', (e as Error).message);
+            }
           }
         } catch (e) {
           console.warn('[Storage] tool success ingest failed:', (e as Error).message);

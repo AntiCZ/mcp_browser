@@ -85,7 +85,7 @@ export async function insertToolCall(params: {
   url_at_call?: string | null;
   page_sig_id?: number | null;
   elem_sig_id?: number | null;
-}, fetchImpl?: FetchLike): Promise<void> {
+}, fetchImpl?: FetchLike): Promise<string | undefined> {
   if (!enabled()) return;
   const payload = {
     run_id: params.run_id ?? null,
@@ -106,7 +106,9 @@ export async function insertToolCall(params: {
     elem_sig_id: params.elem_sig_id ?? null
   };
   try {
-    await postJson(`/rest/v1/tool_calls`, payload, fetchImpl);
+    const rows = await postJson<any[]>(`/rest/v1/tool_calls`, payload, fetchImpl);
+    const row = rows && rows[0];
+    return row?.call_id as string | undefined;
   } catch (e) {
     // Non-fatal for the tool path; log and continue
     console.warn('[Storage] insertToolCall failed:', (e as Error).message);
@@ -115,3 +117,24 @@ export async function insertToolCall(params: {
 
 export const storageEnabled = enabled();
 
+export async function insertArtifact(params: {
+  call_id: string;
+  type: 'screenshot'|'dom'|'har'|'logs'|'scaffold';
+  content_hash: string;
+  size_bytes?: number;
+  storage_path: string;
+}, fetchImpl?: FetchLike): Promise<void> {
+  if (!enabled()) return;
+  const payload = {
+    call_id: params.call_id,
+    type: params.type,
+    content_hash: params.content_hash,
+    size_bytes: params.size_bytes ?? null,
+    storage_path: params.storage_path,
+  };
+  try {
+    await postJson(`/rest/v1/artifacts`, payload, fetchImpl);
+  } catch (e) {
+    console.warn('[Storage] insertArtifact failed:', (e as Error).message);
+  }
+}
