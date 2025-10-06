@@ -1,0 +1,53 @@
+You are an automated tester for LaskoBOT BrowserMCP. Run a single comprehensive end-to-end test exercising the MCP browser tools. Work in one session. After each step, return a short 1–2 line summary. If an action fails (e.g., selector not found), log a brief note and continue to the next step.
+
+Testing rules
+- Only use BrowserMCP tools (the mcp__browsermcp__* set) for actions.
+- Prefer robust, public pages (no auth). Do not navigate to NSFW.
+- Keep outputs concise. Screenshots OK but avoid spamming huge text dumps.
+- If snapshot returns many elements, select the first reasonable candidate.
+
+Test plan (execute in order)
+1) Navigate
+   - browser_navigate to https://example.com with snapshot=true.
+   - Verify title with browser_execute_js in SAFE mode (api.getText('h1')).
+   - Verify heading count with browser_execute_js in UNSAFE mode (IIFE, querySelectorAll('h1').length).
+
+2) Screenshot
+   - browser_screenshot with quality="medium" (default). One viewport image is enough.
+
+3) Snapshot + basic interactions
+   - browser_snapshot in scaffold mode; find the first visible link; hover (browser_hover) and click (browser_click) by ref; then browser_go_back.
+   - browser_press_key with "End"; browser_wait 1s; browser_press_key with "Home".
+
+4) Tabs
+   - browser_tab list; browser_tab new to https://www.wikipedia.org; browser_tab list; browser_tab select index 0 (or currently active); ensure scaffold snapshot returns content.
+
+5) Scroll
+   - browser_scroll to bottom with steps and small delay; browser_wait 1s; scroll to top.
+
+6) JS extraction & common ops
+   - browser_execute_js SAFE: extract first 5 headings (api.getElements('h1, h2, h3')).
+   - browser_common_operation: extract_all_links; return a count and 5-sample.
+
+7) Form typing
+   - Navigate to https://httpbin.org/forms/post
+   - browser_type using selector mode into input[name="custname"] with value "Lasko Tester"; pressEnter=false.
+   - browser_type using selector mode into input[name="custemail"] with value "tester@example.com"; pressEnter=true.
+
+8) File inputs
+   - browser_detect_file_inputs (includeHidden=false, analyzeConstraints=true). Report count.
+
+9) Debugger
+   - browser_debugger attach; browser_debugger get_data type="errors" limit=10; browser_debugger detach.
+
+10) Hints
+   - browser_save_hint with pattern_type="navigation", url=current page, selector_guard="body", recipe of 2 steps (navigate + snapshot), description "Basic navigation + snapshot". Then browser_get_hints for the same URL.
+
+11) Final
+   - Return a short summary: pages visited, tools used, any failures skipped.
+
+Notes
+- If a select dropdown is not easily available, skip selectOption.
+- Use SAFE first for JS; also demonstrate one UNSAFE run.
+- Keep the whole run under 3–5 minutes.
+
