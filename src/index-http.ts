@@ -131,7 +131,7 @@ program
 
     if (process.env.NODE_ENV === "development" || process.env.HOT_RELOAD === "true") {
       console.error("[BrowserMCP HTTP] Hot reload enabled");
-      const watchPath = process.env.HOT_RELOAD_WATCH_PATH || "/home/david/Work/Programming/browsermcp-enhanced/src";
+      const watchPath = process.env.HOT_RELOAD_WATCH_PATH || process.cwd() + "/src";
       console.error(`[BrowserMCP HTTP] Watching: ${watchPath}`);
       enableHotReload({
         verbose: true,

@@ -7,7 +7,7 @@ set -e  # Exit on error
 set -u  # Exit on undefined variable
 
 # ========== CONFIGURATION ==========
-MCP_SERVER_DIR="${MCP_SERVER_DIR:-/home/david/.local/lib/browsermcp-enhanced}"
+MCP_SERVER_DIR="${MCP_SERVER_DIR:-$HOME/.local/lib/browsermcp-enhanced}"
 CHROME_EXT_DIR="${CHROME_EXT_DIR:-$MCP_SERVER_DIR/chrome-extension}"
 FIREFOX_EXT_DIR="${FIREFOX_EXT_DIR:-$MCP_SERVER_DIR/firefox-extension}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/backups/browsermcp-enhanced}"

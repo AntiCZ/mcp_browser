@@ -160,7 +160,7 @@ async function createMCPServer() {
   // Enable hot reload if requested
   if (process.env.HOT_RELOAD === 'true') {
     console.error('[UnifiedMCP] Hot reload enabled');
-    const watchPath = process.env.HOT_RELOAD_WATCH_PATH || '/home/david/Work/Programming/browsermcp-enhanced/src';
+    const watchPath = process.env.HOT_RELOAD_WATCH_PATH || process.cwd() + '/src';
     console.error(`[UnifiedMCP] Watching: ${watchPath}`);
     enableHotReload({
       verbose: true,

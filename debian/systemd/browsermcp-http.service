@@ -5,12 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=david
-Group=david
+User=__USER__
+Group=__GROUP__
 Environment=NODE_ENV=production
+Environment="HOME=__HOME__"
 EnvironmentFile=/etc/default/browsermcp
-WorkingDirectory=/home/david/.local/lib/browsermcp-enhanced
-ExecStart=/usr/bin/node /home/david/.local/lib/browsermcp-enhanced/dist/index-http.js --port ${BROWSER_MCP_HTTP_PORT}
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/usr/bin/node __INSTALL_DIR__/dist/index-http.js --port ${BROWSER_MCP_HTTP_PORT}
 Restart=always
 RestartSec=3
 KillMode=process

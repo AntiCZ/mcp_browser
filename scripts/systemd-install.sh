@@ -19,14 +19,15 @@ Options:
   -h, --help              Show this help
 
 Examples:
-  sudo $0 --user david --install-dir /home/david/.local/lib/browsermcp-enhanced
+  sudo $0 --user $(whoami) --install-dir $HOME/.local/lib/browsermcp-enhanced
   sudo $0 --http-port 4000 --ws-port 9876
 EOF
 }
 
 USER_NAME=$(id -un)
 GROUP_NAME=$(id -gn)
-INSTALL_DIR="/home/${USER_NAME}/\.local/lib/browsermcp-enhanced"
+USER_HOME=$(eval echo ~${USER_NAME})
+INSTALL_DIR="${USER_HOME}/.local/lib/browsermcp-enhanced"
 HTTP_PORT=3000
 WS_PORT=8765
 ENV_FILE="/etc/default/browsermcp"
@@ -60,9 +61,10 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Template replacements for user/group and install dir
 for unit in "$HTTP_UNIT_SRC" "$DAEMON_UNIT_SRC"; do
   base=$(basename "$unit")
-  sed -e "s|^User=.*$|User=${USER_NAME}|" \
-      -e "s|^Group=.*$|Group=${GROUP_NAME}|" \
-      -e "s|/home/david/.local/lib/browsermcp-enhanced|${INSTALL_DIR}|g" \
+  sed -e "s|__USER__|${USER_NAME}|g" \
+      -e "s|__GROUP__|${GROUP_NAME}|g" \
+      -e "s|__HOME__|${USER_HOME}|g" \
+      -e "s|__INSTALL_DIR__|${INSTALL_DIR}|g" \
       "$unit" > "$TMPDIR/$base"
 done
 
