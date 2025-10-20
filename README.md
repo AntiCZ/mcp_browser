@@ -33,52 +33,43 @@ Modern MCP server + browser extensions for reliable, multi‑instance automation
 
 ### Installation
 
-#### Option 1: Quick Deploy Script
-```bash
-git clone https://github.com/david-strejc/browsermcp-enhanced.git
-cd browsermcp-enhanced
-./scripts/deploy
-```
+#### Step 1 - Deploy Script
+  ```bash
+  git clone https://github.com/david-strejc/browsermcp-enhanced.git
+  cd browsermcp-enhanced
+  ./scripts/deploy
+  ```
 
-#### Option 2: Manual Installation
+#### Step 2 - install systemd services (HTTP + WS daemon):
 
-1. **Clone and build:**
-```bash
-git clone https://github.com/david-strejc/browsermcp-enhanced.git
-cd browsermcp-enhanced
-npm install
-npm run build
-```
+  - **Option A: User services (recommended for nvm users, no sudo required):**
+      ```bash
+      ./scripts/systemd-user-install.sh
+      ```
 
-2. **Install systemd services (HTTP + WS daemon):**
+  - **Option B: System services (requires sudo):**
+      ```bash
+      sudo ./scripts/systemd-install.sh --user "$USER" \
+        --install-dir "/home/$USER/.local/lib/browsermcp-enhanced" \
+        --http-port 3000 --ws-port 8765
+      ```
 
-   **Option A: User services (recommended for nvm users, no sudo required):**
-   ```bash
-   ./scripts/systemd-user-install.sh
-   ```
+#### Step 3 - **Load extension (one browser at a time):**
 
-   **Option B: System services (requires sudo):**
-   ```bash
-   sudo ./scripts/systemd-install.sh --user "$USER" \
-     --install-dir "/home/$USER/.local/lib/browsermcp-enhanced" \
-     --http-port 3000 --ws-port 8765
-   ```
-
-3. **Load extension (one browser at a time):**
 - Chrome: `chrome://extensions` → Developer mode → Load unpacked → `chrome-extension/`
 - Firefox: `about:debugging#/runtime/this-firefox` → Load Temporary Add‑on → `firefox-extension/manifest.json`
 
-4. **Configure MCP**
-    ```json
-      {
-        "mcpServers": {
-          "browsermcp": {
-            "type": "http",
-            "url": "http://127.0.0.1:3000/mcp"
-          }
+#### Step 4 - **Configure MCP**
+  ```json
+    {
+      "mcpServers": {
+        "browsermcp": {
+          "type": "http",
+          "url": "http://127.0.0.1:3000/mcp"
         }
       }
-    ```
+    }
+  ```
 
 **For detailed architecture and troubleshooting information, see [ADVANCE_INFO.md](docs/ADVANCE_INFO.md)**
 

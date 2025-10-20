@@ -364,8 +364,25 @@ echo -e "${BOLD}${BLUE}[7/10] Deploying MCP Server${NC}"
 echo "----------------------------------------"
 mkdir -p "$MCP_SERVER_DIR/dist"
 cp -r "$CURRENT_DIR/dist/"* "$MCP_SERVER_DIR/dist/"
-cp "$CURRENT_DIR/package.json" "$MCP_SERVER_DIR/"
-cp "$CURRENT_DIR/package-lock.json" "$MCP_SERVER_DIR/" 2>/dev/null || true
+
+# Clean old package files and node_modules to ensure fresh install
+rm -rf "$MCP_SERVER_DIR/node_modules"
+rm -f "$MCP_SERVER_DIR/package.json"
+rm -f "$MCP_SERVER_DIR/package-lock.json"
+
+# Install only native dependencies (sharp, better-sqlite3)
+# All other JS dependencies are bundled in dist/
+echo "Installing native dependencies..."
+
+# Extract versions from package-lock.json
+SHARP_VERSION=$(grep -A 5 '"node_modules/sharp":' "$CURRENT_DIR/package-lock.json" | grep '"version"' | grep -oP '"\K[0-9.]+' | head -1)
+SQLITE_VERSION=$(grep -A 5 '"node_modules/better-sqlite3":' "$CURRENT_DIR/package-lock.json" | grep '"version"' | grep -oP '"\K[0-9.]+' | head -1)
+
+(
+  cd "$MCP_SERVER_DIR" && \
+  npm install --production --ignore-scripts --os=linux --cpu=x64 \
+    sharp@${SHARP_VERSION} better-sqlite3@${SQLITE_VERSION}
+)
 check_status "MCP Server deployed"
 
 # Step 8: Deploy Chrome Extension
