@@ -1,6 +1,6 @@
 {
   "name": "@browsermcp/mcp-enhanced",
-  "version": "1.30.25",
+  "version": "1.31.1",
   "description": "Enhanced MCP server for browser automation with improved element selection, tab management, debugging capabilities, and token optimization",
   "author": "BrowserMCP Enhanced Contributors",
   "homepage": "https://github.com/browsermcp/mcp-enhanced",
@@ -33,8 +33,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsup src/index.ts src/index-http.ts src/index-multi.ts src/index-unified.ts src/daemon/websocket-daemon.ts --format esm && shx chmod +x dist/*.js",
-    "prepare": "npm run build",
+    "build": "tsup",
     "watch": "tsup src/index.ts src/index-http.ts src/index-multi.ts src/index-unified.ts src/daemon/websocket-daemon.ts --format esm --watch ",
     "inspector": "CLIENT_PORT=9001 SERVER_PORT=9002 pnpx @modelcontextprotocol/inspector node dist/index.js",
     "test": "node test-runner.js",
