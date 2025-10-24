@@ -697,4 +697,49 @@
   };
 
   self.UnifiedDaemonMode = Controller;
+
+  // Handle messages from popup
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'getStatus' || request.type === 'status') {
+      // Return connection status for popup
+      const connected = connectionManager && connectionManager.isConnected();
+      const instanceId = connectionManager ? connectionManager.getInstanceId() : null;
+      const errorInfo = connectionManager ? connectionManager.getLastError() : null;
+
+      sendResponse({
+        connected,
+        instanceId,
+        mode: 'unified',
+        lastError: errorInfo ? errorInfo.error : null,
+        lastErrorTime: errorInfo ? errorInfo.errorTime : null,
+        serverHost: errorInfo ? errorInfo.serverHost : null,
+        serverPort: errorInfo ? errorInfo.serverPort : null
+      });
+      return true; // Keep channel open for async response
+    }
+
+    if (request.type === 'connect') {
+      // Popup wants to connect current tab - already handled by connection manager
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (request.type === 'reloadServerConfig') {
+      // Reload server configuration and reconnect
+      if (connectionManager && connectionManager.reloadConfig) {
+        connectionManager.reloadConfig().then(() => {
+          log('Server config reloaded from popup request');
+          sendResponse({ success: true });
+        }).catch((err) => {
+          error('Failed to reload server config:', err);
+          sendResponse({ success: false, error: err.message });
+        });
+        return true; // Keep channel open for async response
+      } else {
+        sendResponse({ success: false, error: 'Connection manager not available' });
+      }
+      return true;
+    }
+  });
+
 })();

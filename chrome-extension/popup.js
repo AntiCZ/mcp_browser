@@ -9,10 +9,24 @@ document.addEventListener('DOMContentLoaded', function() {
   const instancesList = document.getElementById('instances-list');
   const warningDiv = document.getElementById('multi-instance-warning');
 
+  // Server config elements
+  const serverHostInput = document.getElementById('server-host');
+  const serverPortInput = document.getElementById('server-port');
+  const saveServerConfigButton = document.getElementById('save-server-config');
+  const currentServerSpan = document.getElementById('current-server');
+
   // Load current settings
-  chrome.storage.local.get(['multiInstance', 'unsafeMode'], (result) => {
+  chrome.storage.local.get(['multiInstance', 'unsafeMode', 'browsermcp_server_host', 'browsermcp_server_port'], (result) => {
     multiInstanceToggle.checked = result.multiInstance === true;
     unsafeModeToggle.checked = result.unsafeMode === true;
+
+    // Load server config
+    const serverHost = result.browsermcp_server_host || 'localhost';
+    const serverPort = result.browsermcp_server_port || 8765;
+
+    serverHostInput.value = serverHost;
+    serverPortInput.value = serverPort;
+    currentServerSpan.textContent = `${serverHost}:${serverPort}`;
 
     if (result.multiInstance) {
       checkMultiInstanceStatus();
@@ -20,6 +34,12 @@ document.addEventListener('DOMContentLoaded', function() {
       checkLegacyStatus();
     }
   });
+
+  // Track last known error to persist it
+  let lastKnownError = null;
+
+  // Track current server being connected to
+  let currentConnectingServer = null;
 
   // Check legacy connection status
   function checkLegacyStatus() {
@@ -33,11 +53,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (response && response.connected) {
         statusDiv.className = 'status connected';
-        statusDiv.textContent = `Connected to MCP server`;
+        // Show the server we're actually connected to
+        const displayHost = response.serverHost || 'localhost';
+        const displayPort = response.serverPort || 8765;
+        statusDiv.textContent = `Connected to ${displayHost}:${displayPort}`;
         connectButton.textContent = 'Reconnect';
+        lastKnownError = null; // Clear error when connected
+        currentConnectingServer = null; // Clear connecting state
       } else {
         statusDiv.className = 'status disconnected';
-        statusDiv.textContent = 'Disconnected from MCP server';
+
+        // Update last known error if we have a new one
+        if (response && response.lastError) {
+          lastKnownError = response.lastError;
+        }
+
+        // Always show the last known error (persists across refreshes)
+        if (lastKnownError) {
+          statusDiv.innerHTML = `
+            <strong>Connection Error</strong><br>
+            <small style="color: #a94442;">${lastKnownError}</small>
+          `;
+        } else {
+          statusDiv.textContent = 'Disconnected';
+        }
         connectButton.textContent = 'Connect';
       }
     });
@@ -146,6 +185,48 @@ document.addEventListener('DOMContentLoaded', function() {
     const enabled = this.checked;
     chrome.storage.local.set({ unsafeMode: enabled }, () => {
       console.log('Unsafe mode:', enabled);
+    });
+  });
+
+  // Save server config handler
+  saveServerConfigButton.addEventListener('click', function() {
+    const host = serverHostInput.value.trim() || 'localhost';
+    const port = parseInt(serverPortInput.value) || 8765;
+
+    // Validate port
+    if (port < 1 || port > 65535) {
+      alert('Invalid port number. Must be between 1 and 65535.');
+      return;
+    }
+
+    // Save to storage
+    chrome.storage.local.set({
+      browsermcp_server_host: host,
+      browsermcp_server_port: port
+    }, () => {
+      console.log('Server config saved:', host, port);
+      currentServerSpan.textContent = `${host}:${port}`;
+
+      // Clear last known error on new connection attempt
+      lastKnownError = null;
+      currentConnectingServer = `${host}:${port}`;
+
+      // Notify background to reload config
+      chrome.runtime.sendMessage({ type: 'reloadServerConfig' }, (response) => {
+        if (response && response.success) {
+          statusDiv.className = 'status disconnected';
+          statusDiv.textContent = `Connecting to ${host}:${port}...`;
+
+          // Check status after giving it time to connect/fail
+          setTimeout(() => {
+            if (multiInstanceToggle.checked) {
+              checkMultiInstanceStatus();
+            } else {
+              checkLegacyStatus();
+            }
+          }, 2500); // Increased from 1500ms to give more time
+        }
+      });
     });
   });
 

@@ -31,14 +31,21 @@
     this.connected = false;
     this.connecting = false;
 
-    // Server configuration
-    this.SERVER_HOST = 'localhost';
-    this.SERVER_PORT = 8765;
+    // Server configuration (loaded from storage)
+    this.SERVER_HOST = 'localhost'; // default
+    this.SERVER_PORT = 8765; // default
 
     // Retry settings
     this.RECONNECT_DELAY = 3000;
     this.MAX_RECONNECT_DELAY = 30000;
     this.reconnectAttempts = 0;
+
+    // Error tracking
+    this.lastError = null;
+    this.lastErrorTime = null;
+
+    // Manual close flag (prevents auto-reconnect)
+    this.manualClose = false;
 
     // Message handlers
     this.messageHandlers = new Map();
@@ -52,6 +59,9 @@
   UnifiedConnectionManager.prototype.initialize = async function() {
     log('Initializing unified connection manager...');
 
+    // Load server configuration from storage
+    await this.loadServerConfig();
+
     // Load or generate instance ID (async)
     await this.loadInstanceId();
 
@@ -59,6 +69,27 @@
     this.connect();
 
     this.updateBadge();
+  };
+
+  /**
+   * Load server configuration from storage
+   */
+  UnifiedConnectionManager.prototype.loadServerConfig = async function() {
+    try {
+      const result = await chrome.storage.local.get(['browsermcp_server_host', 'browsermcp_server_port']);
+
+      if (result.browsermcp_server_host) {
+        this.SERVER_HOST = result.browsermcp_server_host;
+        log('Loaded server host from storage:', this.SERVER_HOST);
+      }
+
+      if (result.browsermcp_server_port) {
+        this.SERVER_PORT = result.browsermcp_server_port;
+        log('Loaded server port from storage:', this.SERVER_PORT);
+      }
+    } catch (err) {
+      warn('Failed to load server config from storage, using defaults:', err);
+    }
   };
 
   /**
@@ -122,6 +153,8 @@
         this.connected = true;
         this.connecting = false;
         this.reconnectAttempts = 0;
+        this.lastError = null; // Clear error on successful connection
+        this.lastErrorTime = null;
         this.updateBadge();
 
         // Send hello message
@@ -132,20 +165,46 @@
         });
       };
 
-      this.ws.onclose = () => {
-        log('Connection closed');
+      this.ws.onclose = (event) => {
+        const reason = event.reason || 'No reason provided';
+        const code = event.code;
+        log('Connection closed', { code, reason, wasClean: event.wasClean, manualClose: this.manualClose });
+
+        // Save close reason as error if not a clean disconnect and not manual
+        if (!this.manualClose && (!event.wasClean || code !== 1000)) {
+          this.lastError = `Connection closed: ${reason} (code: ${code})`;
+          this.lastErrorTime = new Date().toISOString();
+
+          // Add more helpful error messages based on code
+          if (code === 1006) {
+            this.lastError = `Cannot connect to server at ${this.SERVER_HOST}:${this.SERVER_PORT} - Connection refused or server not running`;
+          } else if (code === 1002) {
+            this.lastError = `Protocol error when connecting to ${this.SERVER_HOST}:${this.SERVER_PORT}`;
+          }
+        }
+
         this.connected = false;
         this.connecting = false;
         this.ws = null;
         this.updateBadge();
 
-        // Schedule reconnect
-        this.scheduleReconnect();
+        // Only schedule reconnect if not a manual close
+        if (!this.manualClose) {
+          this.scheduleReconnect();
+        } else {
+          log('Manual close - not scheduling reconnect');
+          this.manualClose = false; // Reset flag
+        }
       };
 
       this.ws.onerror = (err) => {
-        error('WebSocket error:', err);
+        const errorMsg = `WebSocket error connecting to ${this.SERVER_HOST}:${this.SERVER_PORT}`;
+        error(errorMsg, err);
+
+        this.lastError = errorMsg;
+        this.lastErrorTime = new Date().toISOString();
         this.connecting = false;
+        this.updateBadge();
       };
 
       this.ws.onmessage = (event) => {
@@ -161,8 +220,13 @@
       this.setupHeartbeat();
 
     } catch (err) {
-      error('Failed to create WebSocket:', err);
+      const errorMsg = `Failed to create WebSocket connection to ${this.SERVER_HOST}:${this.SERVER_PORT}: ${err.message}`;
+      error(errorMsg, err);
+
+      this.lastError = errorMsg;
+      this.lastErrorTime = new Date().toISOString();
       this.connecting = false;
+      this.updateBadge();
       this.scheduleReconnect();
     }
   };
@@ -280,6 +344,18 @@
   };
 
   /**
+   * Get last error information
+   */
+  UnifiedConnectionManager.prototype.getLastError = function() {
+    return {
+      error: this.lastError,
+      errorTime: this.lastErrorTime,
+      serverHost: this.SERVER_HOST,
+      serverPort: this.SERVER_PORT
+    };
+  };
+
+  /**
    * Update badge and icon to show connection status
    */
   UnifiedConnectionManager.prototype.updateBadge = function() {
@@ -303,7 +379,17 @@
       // Update badge
       chrome.action.setBadgeText({ text: '✗' });
       chrome.action.setBadgeBackgroundColor({ color: '#aa0000' });
-      chrome.action.setTitle({ title: 'Browser MCP Disconnected' });
+
+      // Include error info in title if available
+      let title = 'Browser MCP Disconnected';
+      if (this.lastError) {
+        title += `\n\nError: ${this.lastError}`;
+        if (this.lastErrorTime) {
+          const time = new Date(this.lastErrorTime).toLocaleTimeString();
+          title += `\nTime: ${time}`;
+        }
+      }
+      chrome.action.setTitle({ title });
 
       // Update icon to red
       chrome.action.setIcon({
@@ -343,6 +429,28 @@
 
   UnifiedConnectionManager.prototype.hasTabLock = function(tabId) {
     return this.tabLocks.has(tabId);
+  };
+
+  /**
+   * Reload server configuration and reconnect
+   */
+  UnifiedConnectionManager.prototype.reloadConfig = async function() {
+    log('Reloading server configuration...');
+
+    // Set manual close flag to prevent auto-reconnect
+    this.manualClose = true;
+
+    // Close existing connection
+    this.close();
+
+    // Reload configuration
+    await this.loadServerConfig();
+
+    // Give close event time to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Reconnect with new config
+    this.connect();
   };
 
   /**
